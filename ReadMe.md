@@ -14,7 +14,7 @@ det(A) = det(A<sub>1</sub>)det(A<sub>2</sub>)...det(A<sub>n</sub>)\
 #include <fstream>
 #include <cstdlib>    //使用exit必須include
 using namespace std;
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
     ifstream in;
     in.open(argv[1]);
     // 計算行列式值
@@ -29,3 +29,32 @@ int main(int argc, char *argv[]){
 ./det_cal A4.txt
 ```
 #### 2. Concurrency 並行
+與平行不同地方在於，並行的程式只會有一個 main()，並且只會執行一個，並不像上面要執行四個。而並行的程式設計需要在裡面另外去開 thread，C++ 需要用 C++11 以上的標準，C 則是要 C11 以上的標準，也可使用 linux 本身的 pthread 來做開發。
+```cpp
+#include <iostream>
+#include <thread>
+using namespace std;
+void determinant()
+{
+    ...
+}
+int main(int argc, char *argv[]) {
+{
+    ifstream in;
+    in.open(argv[1]);
+    // 計算行列式值
+    int A1[n][n], A2[n][n], A3[n][n], A4[n][n];
+    // 建立執行緒
+    thread first_thread(determinant, A1);
+    thread second_thread(determinant, A2); 
+    thread third_thread(determinant, A3);
+    thread fourth_thread(determinant, A4);
+    // 將主執行緒暫停，等待指定的執行緒結束
+    first_thread.join();
+    second_thread.join();
+    third_thread.join();
+    fourth_thread.join();
+    return 0;
+}
+```
+最後執行 ./det_cal A.txt 即可。跟平行程式不同的地方在於，並行程式是在程式內部做資料切割，且從同到尾只會占用一個 CPU 核心。
