@@ -1,0 +1,129 @@
+若是要用 C/C++ 來開發，需要用 C11/C++11 以上的標準，在標頭檔引入 <threads.h>/<thread>，並在編譯時加上 -pthread。也可以用 linux 裡面的 pthread，在標頭檔引入 <pthreads.h>，並在編譯時加上 -lpthread，以下將以 C++ 的開發為主。
+
+## 1. 開啟與關閉線程
+在程式碼中，如果沒有另外開線程，那該程式就是單線程的程式，此線程也稱為主線程，而此程式稱為主進程。而當我們另外開了一個線程後，及稱為子線程。當主線程被強制結束後，子線程也會被強制結束。例如在下面有個 m_thread.cpp 程式
+```cpp
+#include <thread>  // 使用 std::thread 需要引入
+#include <iostream>
+
+void thread_function(){
+    std::cout << "create a new thread "<< std::endl;
+}
+int main(){
+    std::thread t1(thread_function);
+    // 新開一個 thread t1 去執行 thread_function 這個函數
+    t1.join(); // 告訴主進程 t1 結束了
+    return 0;
+}
+```
+編譯 g++ -o m_thread m_thread.cpp -pthread 後執行就會顯示 ```create a new thread``` 並正常退出。開了一個線程後也需要在結束後對線程做資源釋放，在 thread 中提供了兩種方法
+
+#### 1. join()
+上方在程式結束前呼叫了 join() 函數，主要是告訴主進程 t1 線程已經結束了，可以正常退出，如果沒呼叫的話則是會卡住或異常退出。如果對於同個子線程呼叫兩次 join() 函數程式也會出錯，所以可以用 joinable() 函數來檢查是否需要。
+#### 2. detach()
+如果不用等待子線程的函數執行結束就關掉主線程，可以使用 detach() 函數，主要就是要正常地釋放資源，所以是根據開發者的需求選擇使用 join() 或 detach()，在釋放前也可使用 joinable() 函數來檢查。
+
+雖然在寫程式上，每個線程都會有先後開啟之分，但實際上先執行哪個線程則是 OS 會去調度，所以線程就是進程執行的最小單位。下方程式有三個線程，可以多執行幾次看輸出
+```cpp
+#include <thread>
+#include <iostream>
+
+void thread_function1(){
+    printf("in thread_function1\n");
+}
+void thread_function2(){
+    printf("in thread_function2\n");
+}
+int main(){
+    std::thread t1(thread_function1);
+    std::thread t2(thread_function2);
+    printf("in main\n");
+    t1.join();// without this line, program will abort
+    t2.join();
+    return 0;
+}
+```
+下方為每次執行的結果，可以看到雖然 t1 在程式中的順序比較前面，再來是 t2，最後才是 main，但輸出結果卻不一定是如此。
+```cpp
+in main
+in thread_function2
+in thread_function1
+```
+```cpp
+in thread_function1
+in main
+in thread_function2
+```
+```cpp
+in main
+in thread_function1
+in thread_function2
+```
+這就表示在做實際計算時，如果有多個進程對同個變數做改寫，可能會有非預期的結果。
+
+## 2. 傳參數
+得益於 C++ 的多載和傳引用，讓 std::thread 在傳遞參數時非常的方便，如果是用 C 或是 pthread，那麼寫起來會比較麻煩。
+```cpp
+#include <thread>
+#include <iostream>
+#include <string>
+#include <vector>
+void func(int i, std::string s) {
+    printf("%d,  %s\n", i, s.c_str());
+}
+
+int main()
+{
+    std::vector<std::thread> threads;
+    for(int i = 0; i < 5; i++){
+        threads.push_back(std::thread(func, i, "test"));
+    }   
+    for(int i = 0; i < threads.size(); i++){
+        threads[i].join();
+    }   
+    return 0;
+}
+```
+可以看到 std::thread 第一個引數就是函數，後面引數的順序就跟著傳入函數的引數順序即可。如果是用 C 或 pthread 寫就會特別麻煩，先來看一下裡面開線程函數 pthread_create 的原型 
+```c
+int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg)
+```
+C 或 pthread 僅支援固定引數個數的函數 pthread_create，
+第一個引數就是 thread 名稱。\
+第二個函數則是決定主進程是否需要等待該線程結束在結束進程，也就是要 join 或是 detach，通常會使用 NULL。\
+第三個就是函數的名稱，要傳入的函數回傳直指能是 void *，需要自己轉型或是直接改動傳入的參數。\
+第四個就是該函數需要傳入的引數，因為只能傳一個，所以必須包成 struct 傳入。\
+所以上面的 cpp 需改寫成
+```c
+#include <stdio.h>
+#include <pthread.h>
+#include <string.h>
+typedef struct _args {
+    int data;
+    char s[5];
+}args;
+
+void* func(void* arg)
+{
+    args *a1;
+    a1 = (args* ) arg;
+    printf("%d,  %s\n", a1->data, a1->s);
+    return a1;
+}
+
+int main()
+{
+    args a1[5];
+    void *ret;
+    pthread_t thread[5];
+    for(int i = 0; i < 5; i++){
+        a1[i].data = i;
+        strcpy(a1[i].s, "test");
+        pthread_create(&thread[i], NULL, func, &a1[i]);
+    }   
+    for(int i = 0; i < 5; i++){
+        pthread_join(thread[i], &ret);
+    }   
+    return 0;
+}
+```
