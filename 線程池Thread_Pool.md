@@ -14,17 +14,16 @@ typedef struct {
 
 typedef struct {
     Task *task_queue;
-    int head, tail, count, queue_size;
+    int head, tail, count, queue_size; // 環狀佇列
+    int thread_count; // 線程數量
+    int stop; // 停止 flag
     pthread_mutex_t lock;
     pthread_cond_t cond;
     pthread_t *threads;
-    int thread_count;
-    int stop;
 } ThreadPool;
 ```
-
+Task 中的兩個成員是給 pthread 使用，ThreadPool 中則是包含鎖與環狀佇列等變數
 ## 2. 初始化
-
 ```C
 void *worker_thread(void *arg) {
     ThreadPool *pool = (ThreadPool *)arg;
@@ -66,6 +65,9 @@ void thread_pool_init(ThreadPool *pool, int thread_count, int queue_size) {
     }
 }
 ```
+worker_thread 就是我們開啟的線程，因為 pthread_create 的關係，所以需要先將實作寫好，初始化時就要先傳入。worker_thread 中可以看到當沒有可用 thread 時就需要等待，直到被通知有空的線程時才會繼續往下，反之如果有空的線程，就將其佇列中等待的線程拿出來執行。其中使用條件變數而不是一直 busy wait，可以減少等待時的開銷。
+## 2. 加入與執行任務
+```C
 void execute_task(void *arg) {
     int id = *(int *)arg;
     printf("任務 %d 開始執行\n", id);
@@ -85,7 +87,9 @@ void thread_pool_add_task(ThreadPool *pool, void (*function)(void *), void *arg)
     }
     pthread_mutex_unlock(&pool->lock);
 }
-
+```
+再加入任務時要把環狀佇列保護起來，否則可能會有 Race condition
+```C
 void thread_pool_shutdown(ThreadPool *pool) {
     pthread_mutex_lock(&pool->lock);
     pool->stop = 1;
@@ -102,10 +106,11 @@ void thread_pool_shutdown(ThreadPool *pool) {
     pthread_mutex_destroy(&pool->lock);
     pthread_cond_destroy(&pool->cond);
 }
-
+```
+```C
 int main(int argc, char *argv[]) {
-    int thread_count = atoi(argv[1]);
-    int queue_size = atoi(argv[2]);
+    int thread_count = 4;
+    int queue_size = 10;
 
     ThreadPool pool;
     thread_pool_init(&pool, thread_count, queue_size);
