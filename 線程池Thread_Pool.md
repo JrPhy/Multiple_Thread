@@ -29,11 +29,11 @@ void *worker_thread(void *arg) {
     ThreadPool *pool = (ThreadPool *)arg;
     while (1) {
         pthread_mutex_lock(&pool->lock);
-        while (pool->count == 0 && !pool->stop) {
+        while (!pool->count && !pool->stop) {
             pthread_cond_wait(&pool->cond, &pool->lock);
         }
 
-        if (pool->stop && pool->count == 0) {
+        if (pool->stop && !pool->count) {
             pthread_mutex_unlock(&pool->lock);
             pthread_exit(NULL);
         }
