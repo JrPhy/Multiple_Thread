@@ -19,7 +19,7 @@ while (x == 0) {
 雖然沒有上鎖，但是因為 Race condition 的關係使得無法跳脫迴圈，所以這也不算 lock-free 的程式。除了無鎖外，執行緒安全也是必要的，也就是 A 在讀取的時候並不能由其他執行緒修改。一種避免的方法就是用 CAS，當然 CAS 也會有 ABA 問題，就可以再加上版本號來解決。
 
 ## 一、LOCK-FREE STACK
-```
+```c++
 #include <atomic>
 #include <iostream>
 #include <thread>
@@ -31,7 +31,6 @@ struct Node {
     Node(int v) : value(v), next(nullptr) {}
 };
 
-// Tagged pointer: 包含指標 + 版本號
 struct TaggedPtr {
     Node* ptr;
     unsigned tag;
